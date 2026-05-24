@@ -58,12 +58,87 @@ This document provides details on testing various services after running the `do
 
 ---
 
-## Instructions
-1. Start all services using the `docker-compose` file:
-   ```
-   docker-compose up
-   ```
-2. Once the services are running, use the above endpoints to verify the functionality.
+## Docker Compose Deployment
+
+### Prerequisites
+- Docker and Docker Compose installed
+- PowerShell (Windows) or a POSIX shell
+
+### Setup Steps
+
+1) **Build and start all services:**
+
+```powershell
+docker-compose up --build
+```
+
+The `--build` flag rebuilds images from Dockerfiles. Omit it on subsequent runs if images are already built.
+
+2) **Verify services are running:**
+
+```powershell
+docker-compose ps
+```
+
+Expected output: all four containers should show `Up` status.
+
+3) **Test individual services:**
+
+User Service:
+```powershell
+curl http://localhost:3000/health
+curl http://localhost:3000/users
+```
+
+Product Service:
+```powershell
+curl http://localhost:3001/health
+curl http://localhost:3001/products
+```
+
+Order Service:
+```powershell
+curl http://localhost:3002/health
+curl http://localhost:3002/orders
+```
+
+4) **Test gateway inter-service communication:**
+
+```powershell
+curl http://localhost:3003/health
+curl http://localhost:3003/api/users
+curl http://localhost:3003/api/products
+curl http://localhost:3003/api/orders
+curl -X POST http://localhost:3003/api/orders -H "Content-Type: application/json" -d '{"userId":1,"productId":1}'
+```
+
+5) **View service logs:**
+
+All services:
+```powershell
+docker-compose logs -f
+```
+
+Specific service (e.g., gateway):
+```powershell
+docker-compose logs -f gateway-service
+```
+
+6) **Stop and clean up:**
+
+```powershell
+docker-compose down
+```
+
+### Docker Compose File Details
+
+The `docker-compose.yaml` includes:
+- **Build context:** Each service builds from its Dockerfile
+- **Networking:** All services on `microservices-network` bridge network for inter-service communication
+- **Port mappings:** User (3000), Product (3001), Order (3002), Gateway (3003)
+- **Health checks:** Each service has HTTP `/health` endpoint probes
+- **Dependency ordering:** Gateway depends on other services being healthy before starting
+- **Environment variables:** Service URLs passed to Gateway for internal communication
 
 Happy testing!
 
@@ -108,6 +183,14 @@ minikube image load gateway-service:latest
 
 3) Apply Kubernetes manifests
 
+First, create the namespace:
+
+```powershell
+kubectl apply -f k8s/namespace.yaml
+```
+
+Then apply all services and deployments:
+
 ```powershell
 kubectl apply -f k8s/all.yaml
 ```
@@ -115,9 +198,9 @@ kubectl apply -f k8s/all.yaml
 4) Validate pods and services
 
 ```powershell
-kubectl get pods
-kubectl get svc
-kubectl get deploy
+kubectl get pods -n microservices
+kubectl get svc -n microservices
+kubectl get deploy -n microservices
 ```
 
 5) Test inter-service communication via the Gateway
@@ -125,7 +208,7 @@ kubectl get deploy
 Port-forward the Gateway service to localhost:
 
 ```powershell
-kubectl port-forward svc/gateway-service 3003:3003
+kubectl port-forward -n microservices svc/gateway-service 3003:3003
 ```
 
 In another shell, call the gateway endpoints (these forward to other services inside cluster):
@@ -140,8 +223,8 @@ curl -X POST http://localhost:3003/api/orders -H "Content-Type: application/json
 6) Inspect logs to validate inter-service calls
 
 ```powershell
-kubectl logs -l app=gateway-service
-kubectl logs -l app=order-service
+kubectl logs -n microservices -l app=gateway-service
+kubectl logs -n microservices -l app=order-service
 ```
 
 7) (Optional Bonus) Enable Ingress and apply routing
@@ -149,6 +232,7 @@ kubectl logs -l app=order-service
 ```powershell
 minikube addons enable ingress
 kubectl apply -f k8s/ingress.yaml
+kubectl get ingress -n microservices
 minikube ip    # add mapping for micro.local in your hosts file: <MINIKUBE_IP> micro.local
 ```
 
@@ -163,6 +247,7 @@ Screenshots
 - Capture `kubectl get pods` output and logs from the Gateway demonstrating successful requests and add them to this repository or include them in your submission.
 
 Files added
+- `k8s/namespace.yaml` : Namespace resource for microservices isolation
 - `k8s/all.yaml` : Deployments + Services for all services
 - `k8s/ingress.yaml` : Optional Ingress resource (requires `minikube addons enable ingress`)
 
